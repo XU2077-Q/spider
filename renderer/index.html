@@ -183,19 +183,17 @@
         requestAnimationFrame(drawFrame);
       }
 
-      [
-        'idle', 'idle-left-near', 'idle-left', 'idle-right-near', 'idle-right',
-        'idle-up-near', 'idle-up', 'idle-down-near', 'idle-down', 'struggle',
-        'stretch', 'beg', 'attention', 'yawn', 'remind-meal',
-      ].forEach(spriteFor);
+      Object.keys(config.clips).filter(function (name) {
+        return name === 'idle' || name.indexOf('idle-') === 0;
+      }).concat([
+        'struggle', 'stretch', 'beg', 'attention', 'yawn', 'remind-meal',
+      ]).forEach(spriteFor);
       selectClip('idle', false);
       requestAnimationFrame(drawFrame);
       window.spider && window.spider.onAnim(setAnimation);
       window.spider && window.spider.onGaze(function (direction) {
-        if ([
-          'center', 'left-near', 'left', 'right-near', 'right',
-          'up-near', 'up', 'down-near', 'down',
-        ].indexOf(direction) < 0) return;
+        var clip = direction === 'center' ? config.clips.idle : config.clips['idle-' + direction];
+        if (!clip || !clip.gaze) return;
         var changed = currentGaze !== direction;
         currentGaze = direction;
         if (changed && (currentType === 'idle' || currentType === 'emotion-neutral')) {

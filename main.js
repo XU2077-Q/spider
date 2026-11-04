@@ -244,6 +244,17 @@ function playTriggerAnimation(type) {
 }
 
 // 只向 renderer 发送离散方向，不暴露原始鼠标坐标。
+const GAZE_DIRECTIONS = [
+  'right', 'down-right', 'down', 'down-left',
+  'left', 'up-left', 'up', 'up-right',
+];
+const GAZE_POSES = new Set(['center']);
+for (const direction of GAZE_DIRECTIONS) {
+  GAZE_POSES.add(direction);
+  GAZE_POSES.add(direction + '-near');
+  GAZE_POSES.add(direction + '-mid');
+}
+
 function gazeDirection(cursor) {
   const bounds = petWindow.getBounds();
   const dx = cursor.x - (bounds.x + bounds.width * 0.46);
@@ -252,10 +263,10 @@ function gazeDirection(cursor) {
   const centerThreshold = currentGaze === 'center' ? 34 : 24;
   if (distance < centerThreshold) return 'center';
   const nearThreshold = currentGaze.endsWith('-near') ? 132 : 112;
-  const suffix = distance < nearThreshold ? '-near' : '';
-  const vertical = Math.abs(dy) > Math.abs(dx) * 1.05;
-  if (vertical) return (dy < 0 ? 'up' : 'down') + suffix;
-  return (dx < 0 ? 'left' : 'right') + suffix;
+  const midThreshold = currentGaze.endsWith('-mid') ? 240 : 220;
+  const suffix = distance < nearThreshold ? '-near' : distance < midThreshold ? '-mid' : '';
+  const sector = (Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8;
+  return GAZE_DIRECTIONS[sector] + suffix;
 }
 
 function startGazeTracking() {
@@ -279,10 +290,7 @@ function petAnim(type, force = false) {
 }
 
 function petGaze(direction, force = false) {
-  if (![
-    'center', 'left-near', 'left', 'right-near', 'right',
-    'up-near', 'up', 'down-near', 'down',
-  ].includes(direction)) return;
+  if (!GAZE_POSES.has(direction)) return;
   currentGaze = direction;
   if (petWindow && !petWindow.isDestroyed() && (force || sentGaze !== direction)) {
     petWindow.webContents.send('pet-gaze', direction);
