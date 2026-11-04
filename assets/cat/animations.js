@@ -37,7 +37,7 @@ window.CAT_ANIMATIONS = {
     'wake': { frames: 18, fps: 10, loop: false },
     'stretch': { frames: 28, fps: 10, loop: false },
     'hop': { frames: 12, fps: 10, loop: false },
-    'struggle': { frames: 8, fps: 10, loop: true },
+    'struggle': { frames: 16, fps: 20, loop: true },
     'happy': { frames: 16, fps: 10, loop: false },
     'beg': { frames: 26, fps: 10, loop: false },
     'attention': { frames: 26, fps: 10, loop: false },

@@ -202,9 +202,16 @@
         }
       });
 
-      // ---- 拖拽 + 点击识别：覆盖取消、丢失捕获和窗口失焦 ----
+      // ---- 逐像素点击穿透 + 拖拽：透明区域把鼠标还给底层应用 ----
       var dragging = false, pointerId = null, downX = 0, downY = 0, moved = false;
-      function finishDrag(cancelled) {
+      var lastCatHit = null;
+      function updateCatHit(hit) {
+        hit = Boolean(hit);
+        if (hit === lastCatHit) return;
+        lastCatHit = hit;
+        window.spider && window.spider.hoverCat(hit);
+      }
+      function finishDrag(cancelled, e) {
         if (!dragging) return;
         var finishedPointer = pointerId;
         dragging = false;
@@ -213,11 +220,17 @@
           petWrap.releasePointerCapture(finishedPointer);
         }
         window.spider && window.spider.dragEnd();
+        updateCatHit(e ? isOpaqueCatPixel(e) : false);
         cat.style.cursor = 'default';
         if (!moved && !cancelled) window.spider && window.spider.openChat();
       }
       document.addEventListener('pointerdown', function (e) {
-        if (e.button !== 0 || dragging || e.target !== cat || !isOpaqueCatPixel(e)) return;
+        if (e.button !== 0 || dragging) return;
+        if (e.target !== cat || !isOpaqueCatPixel(e)) {
+          updateCatHit(false);
+          return;
+        }
+        updateCatHit(true);
         dragging = true;
         pointerId = e.pointerId;
         downX = e.screenX;
@@ -230,8 +243,10 @@
       });
       document.addEventListener('pointermove', function (e) {
         if (!dragging) {
-          // 透明空白保持普通箭头，只有猫身实际像素显示可抓取光标。
-          cat.style.cursor = e.target === cat && isOpaqueCatPixel(e) ? 'grab' : 'default';
+          // 透明空白穿透且保持普通箭头，只有猫身实际像素可抓取。
+          var hit = e.target === cat && isOpaqueCatPixel(e);
+          updateCatHit(hit);
+          cat.style.cursor = hit ? 'grab' : 'default';
           return;
         }
         if (e.pointerId !== pointerId) return;
@@ -239,18 +254,21 @@
         window.spider && window.spider.dragMove();
       });
       document.addEventListener('pointerup', function (e) {
-        if (dragging && e.pointerId === pointerId) finishDrag(false);
+        if (dragging && e.pointerId === pointerId) finishDrag(false, e);
       });
       document.addEventListener('pointercancel', function (e) {
-        if (dragging && e.pointerId === pointerId) finishDrag(true);
+        if (dragging && e.pointerId === pointerId) finishDrag(true, null);
       });
       document.addEventListener('lostpointercapture', function (e) {
-        if (dragging && e.pointerId === pointerId) finishDrag(true);
+        if (dragging && e.pointerId === pointerId) finishDrag(true, null);
       }, true);
       document.addEventListener('pointerleave', function () {
-        if (!dragging) cat.style.cursor = 'default';
+        if (!dragging) {
+          updateCatHit(false);
+          cat.style.cursor = 'default';
+        }
       });
-      window.addEventListener('blur', function () { finishDrag(true); });
+      window.addEventListener('blur', function () { finishDrag(true, null); });
     })();
   </script>
 </body>

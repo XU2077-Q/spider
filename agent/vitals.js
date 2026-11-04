@@ -12,7 +12,7 @@ const CFG = {
   energyDecayPerHour: 6,          // 精力：清醒每小时衰减
   energyRecoverPerHour: 15,       // 精力：睡觉每小时恢复
   moodDriftPerHour: 5,            // 心情：向 50 漂移的速度
-  energyPerToken: 1 / 500,        // 心智消耗：每 token 消耗精力
+  energyPerToken: 1 / 1000,       // 心智消耗：每 token 消耗精力
 };
 
 const DEFAULT = { energy: 85, satiety: 75, mood: 72, sleeping: false, lastUpdated: Date.now() };
@@ -61,8 +61,8 @@ function tick(v) {
 
 // —— 互动（各返回最新状态）——
 function feed() { const v = tick(); v.satiety = clamp(v.satiety + 30, 0, 100); v.mood = clamp(v.mood + 5, 0, 100); save(v); return v; }
-function pet() { const v = tick(); v.mood = clamp(v.mood + 15, 0, 100); v.energy = clamp(v.energy - 1, 0, 100); save(v); return v; }
-function play() { const v = tick(); v.mood = clamp(v.mood + 20, 0, 100); v.energy = clamp(v.energy - 10, 0, 100); v.satiety = clamp(v.satiety - 3, 0, 100); save(v); return v; }
+function pet() { const v = tick(); v.mood = clamp(v.mood + 15, 0, 100); v.energy = clamp(v.energy - 0.5, 0, 100); save(v); return v; }
+function play() { const v = tick(); v.mood = clamp(v.mood + 20, 0, 100); v.energy = clamp(v.energy - 5, 0, 100); v.satiety = clamp(v.satiety - 3, 0, 100); save(v); return v; }
 function rest() { const v = tick(); v.sleeping = true; v.sleepReason = 'rest'; save(v); return v; }
 function wake() { const v = tick(); v.sleeping = false; v.sleepReason = null; v.mood = clamp(v.mood - 15, 0, 100); save(v); return v; }
 
