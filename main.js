@@ -14,6 +14,7 @@ let chatWindow = null;
 let diaryWindow = null;
 let dragOffset = null;
 let isDragging = false;
+let catHovered = false;
 let currentVitals = null;
 let currentAnimation = 'idle';
 let sentAnimation = null;
@@ -49,6 +50,12 @@ function movePetWindow(x, y) {
   });
 }
 
+// 透明窗口默认让点击穿透；forward 保留 hover 检测，猫身才恢复鼠标捕获。
+function applyPetHitTest() {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  petWindow.setIgnoreMouseEvents(!isDragging && !catHovered, { forward: true });
+}
+
 function createPetWindow() {
   const { workArea } = screen.getPrimaryDisplay();
 
@@ -70,6 +77,8 @@ function createPetWindow() {
     },
   });
 
+  catHovered = false;
+  applyPetHitTest();
   petWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   petWindow.webContents.on('did-finish-load', () => {
     sentAnimation = null;
@@ -84,6 +93,7 @@ function createPetWindow() {
     nextRoamTimer = null;
     dragOffset = null;
     isDragging = false;
+    catHovered = false;
     petWindow = null;
   });
 }
@@ -324,6 +334,11 @@ function createDiaryWindow() {
 }
 
 // —— 拖拽（宠物窗）：立即取消自主行为，所有退出路径统一清理 ——
+ipcMain.on('pet-hit-test', (e, hovered) => {
+  if (BrowserWindow.fromWebContents(e.sender) !== petWindow || typeof hovered !== 'boolean') return;
+  catHovered = hovered;
+  applyPetHitTest();
+});
 ipcMain.on('drag-start', (e) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   if (!petWindow || win !== petWindow) return;

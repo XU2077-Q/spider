@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('spider', {
   dragStart: () => ipcRenderer.send('drag-start'),
   dragMove: () => ipcRenderer.send('drag-move'),
   dragEnd: () => ipcRenderer.send('drag-end'),
+  hoverCat: (hovered) => ipcRenderer.send('pet-hit-test', hovered),
   openChat: () => ipcRenderer.send('open-chat'),
   chat: (msg, history) => ipcRenderer.invoke('agent-chat', { msg, history }),
   // 日记
