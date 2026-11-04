@@ -3,6 +3,7 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const memory = require('./memory');
+const documents = require('./documents');
 
 // 数据目录（待办、提醒都持久化在这里，已 gitignore）
 const dataDir = path.join(__dirname, '..', 'data');
@@ -133,6 +134,33 @@ const definitions = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'create_document',
+      description: '根据用户主题创作完整办公文档，并保存为可编辑 Word；Word 不可用时明确降级为 Markdown。你不能选择保存路径。',
+      parameters: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          title: { type: 'string', description: '文档标题，不超过 80 字' },
+          sections: {
+            type: 'array', maxItems: 30,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                heading: { type: 'string' },
+                paragraphs: { type: 'array', items: { type: 'string' }, maxItems: 30 },
+                bullets: { type: 'array', items: { type: 'string' }, maxItems: 30 },
+              },
+              required: ['heading'],
+            },
+          },
+          format: { type: 'string', enum: ['docx', 'markdown'], description: '期望格式，默认 docx' },
+        },
+        required: ['title', 'sections'],
+      },
+    },
+  },
 ];
 
 // ================= 工具实现 =================
@@ -192,26 +220,60 @@ function set_reminder({ text, time, repeat }) {
 function restoreReminders() {
   readJson(REMINDERS_FILE, []).forEach(schedule);
 }
+function stopReminders() {
+  for (const timer of Object.values(scheduled)) clearTimeout(timer);
+  for (const id of Object.keys(scheduled)) delete scheduled[id];
+}
 
-// —— 待办 ——
-function add_todo({ text }) {
-  const todos = readJson(TODOS_FILE, []);
-  todos.push({ id: todos.length + 1, text, done: false });
+// —— 待办：同一份数据同时供 Agent 与 Work Buddy 使用 ——
+function listTodos() {
+  return readJson(TODOS_FILE, []).map((todo) => ({
+    createdAt: null, completedAt: null, ...todo,
+  }));
+}
+function addTodo(text) {
+  const clean = String(text || '').trim();
+  if (!clean || clean.length > 120) throw new Error('待办内容需为 1–120 个字符');
+  const todos = listTodos();
+  if (todos.length >= 100) throw new Error('待办已达到 100 条，请先整理');
+  const todo = {
+    id: todos.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1,
+    text: clean, done: false, createdAt: new Date().toISOString(), completedAt: null,
+  };
+  todos.push(todo);
   writeJson(TODOS_FILE, todos);
-  return `已添加待办 #${todos.length}：${text}`;
+  return todo;
+}
+function completeTodo(id) {
+  const todos = listTodos();
+  const todo = todos.find((item) => item.id === Number(id));
+  if (!todo) return null;
+  todo.done = !todo.done;
+  todo.completedAt = todo.done ? new Date().toISOString() : null;
+  writeJson(TODOS_FILE, todos);
+  return todo;
+}
+function deleteTodo(id) {
+  const todos = listTodos();
+  const remaining = todos.filter((item) => item.id !== Number(id));
+  if (remaining.length === todos.length) return false;
+  writeJson(TODOS_FILE, remaining);
+  return true;
+}
+function add_todo({ text }) {
+  const todo = addTodo(text);
+  return `已添加待办 #${todo.id}：${todo.text}`;
 }
 function list_todo() {
-  const todos = readJson(TODOS_FILE, []);
+  const todos = listTodos();
   if (!todos.length) return '当前没有待办';
   return todos.map((t) => `${t.done ? '✅' : '⬜'} #${t.id} ${t.text}`).join('\n');
 }
 function complete_todo({ id }) {
-  const todos = readJson(TODOS_FILE, []);
-  const t = todos.find((x) => x.id === id);
-  if (!t) return `没有 #${id} 这条待办`;
-  t.done = true;
-  writeJson(TODOS_FILE, todos);
-  return `已完成 #${id}：${t.text}`;
+  const todo = listTodos().find((item) => item.id === Number(id));
+  if (!todo) return `没有 #${id} 这条待办`;
+  if (!todo.done) completeTodo(id);
+  return `已完成 #${id}：${todo.text}`;
 }
 
 // —— 打开 ——
@@ -236,12 +298,22 @@ function remember(args) { return memory.remember(args.text, args.tags); }
 function set_preference(args) { return memory.addPreference(args.text); }
 function correct(args) { return memory.correct(args.old_text || '', args.new_text); }
 
+// —— 文档创作：模型只提供内容，保存路径由 documents 服务决定 ——
+async function create_document(args) {
+  const result = await documents.createDocument(args);
+  const format = result.format === 'docx' ? '可编辑 Word 文档' : 'Markdown 文档';
+  return `已创建${format}：${result.path}${result.warning ? `。注意：${result.warning}` : ''}`;
+}
+
 // —— 分发 ——
-const handlers = { get_time, set_reminder, add_todo, list_todo, complete_todo, open_url, open_app, get_weather, remember, set_preference, correct };
+const handlers = { get_time, set_reminder, add_todo, list_todo, complete_todo, open_url, open_app, get_weather, remember, set_preference, correct, create_document };
 async function execute(name, args) {
   const fn = handlers[name];
   if (!fn) return `没有「${name}」这个工具`;
   return await fn(args || {});
 }
 
-module.exports = { definitions, execute, restoreReminders };
+module.exports = {
+  definitions, execute, restoreReminders, stopReminders,
+  listTodos, addTodo, completeTodo, deleteTodo,
+};

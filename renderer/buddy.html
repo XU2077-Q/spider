@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <title>喵伴 Spider · 工作伙伴</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17232d;
+      --muted: #687782;
+      --paper: #f5f3ee;
+      --card: #ffffff;
+      --line: #e4e5e1;
+      --orange: #e8934a;
+      --orange-soft: #fff0e2;
+      --mint: #70d6c1;
+      --mint-dark: #247c6d;
+      --mint-soft: #e6f7f2;
+      --danger: #b94747;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-width: 420px; background: var(--paper); color: var(--ink);
+      font-family: "Microsoft YaHei", "Segoe UI", sans-serif; font-size: 13px;
+      overflow-x: hidden; user-select: none;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .5; }
+    header {
+      padding: 20px 22px 0; color: #fff;
+      background: var(--ink); position: relative; overflow: hidden;
+    }
+    header::after {
+      content: ""; position: absolute; width: 160px; height: 160px; border-radius: 50%;
+      right: -60px; top: -88px; background: var(--orange); opacity: .18; pointer-events: none;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .cat-mark {
+      display: grid; place-items: center; width: 38px; height: 38px;
+      background: var(--orange); border-radius: 11px; font-size: 22px;
+    }
+    h1 { margin: 0; font-size: 18px; letter-spacing: .5px; }
+    .subtitle { margin-top: 3px; color: #b9c8cf; font-size: 11px; }
+    nav { display: flex; gap: 22px; margin-top: 18px; }
+    nav button {
+      border: 0; border-bottom: 3px solid transparent; padding: 0 2px 11px;
+      background: transparent; color: #b9c8cf; font-weight: bold;
+    }
+    nav button.active { color: #fff; border-bottom-color: var(--mint); }
+    main { padding: 18px 20px 26px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+      padding: 16px; margin-bottom: 14px; box-shadow: 0 4px 14px rgba(23, 35, 45, .035);
+    }
+    .timer-card { text-align: center; position: relative; overflow: hidden; }
+    .timer-card::before {
+      content: ""; position: absolute; inset: 0 0 auto; height: 4px;
+      background: linear-gradient(90deg, var(--orange), var(--mint));
+    }
+    #session-label { margin-top: 2px; color: var(--mint-dark); font-weight: bold; }
+    #timer {
+      margin: 9px 0 3px; font: 700 52px/1.15 Consolas, monospace;
+      letter-spacing: 2px; font-variant-numeric: tabular-nums;
+    }
+    #linked-task { min-height: 20px; color: var(--muted); font-size: 12px; }
+    .timer-actions { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
+    .btn {
+      min-height: 34px; padding: 7px 14px; border: 1px solid var(--line);
+      border-radius: 10px; background: #fff; color: var(--ink); font-weight: bold;
+    }
+    .btn:hover:not(:disabled) { filter: brightness(.97); }
+    .btn.primary { border-color: var(--ink); background: var(--ink); color: #fff; }
+    .btn.orange { border-color: var(--orange); background: var(--orange); color: #fff; }
+    .btn.mint { border-color: var(--mint); background: var(--mint); color: #153b35; }
+    .btn.ghost { background: transparent; }
+    .btn.small { min-height: 29px; padding: 4px 9px; font-size: 12px; }
+    .setup-row { display: grid; grid-template-columns: 1fr 1.45fr; gap: 10px; margin-top: 14px; text-align: left; }
+    label.field { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 11px; }
+    input, select, textarea {
+      width: 100%; border: 1px solid #d9dddc; border-radius: 9px;
+      background: #fff; color: var(--ink); outline: none; user-select: text;
+    }
+    input, select { height: 35px; padding: 6px 9px; }
+    textarea { min-height: 168px; padding: 11px; resize: vertical; line-height: 1.65; }
+    input:focus, select:focus, textarea:focus { border-color: var(--mint-dark); box-shadow: 0 0 0 2px rgba(112, 214, 193, .2); }
+    .section-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    h2 { margin: 0; font-size: 14px; }
+    .hint { color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .stat { padding: 10px 5px; border-radius: 11px; background: var(--paper); text-align: center; }
+    .stat strong { display: block; font: 700 23px/1.2 Consolas, monospace; }
+    .stat span { color: var(--muted); font-size: 10px; }
+    .todo-composer { display: flex; gap: 7px; margin-bottom: 10px; }
+    #todo-list { display: flex; flex-direction: column; gap: 5px; max-height: 160px; overflow-y: auto; }
+    .todo { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 9px; background: #fafaf8; }
+    .todo input { width: 15px; height: 15px; margin: 0; accent-color: var(--mint-dark); flex: 0 0 auto; }
+    .todo-text { flex: 1; min-width: 0; overflow-wrap: anywhere; user-select: text; }
+    .todo.done .todo-text { color: #929b9e; text-decoration: line-through; }
+    .icon-btn { border: 0; background: transparent; color: #9ba3a7; padding: 3px 5px; }
+    .icon-btn:hover { color: var(--danger); }
+    .empty { color: var(--muted); text-align: center; padding: 10px; font-size: 12px; }
+    .doc-heading { margin-bottom: 8px; }
+    .doc-heading h2 { font-size: 17px; margin-bottom: 5px; }
+    .doc-options { display: flex; gap: 8px; align-items: end; margin-top: 11px; }
+    .doc-options .field { flex: 1; }
+    #create-document { flex: 1.4; }
+    .directory {
+      display: flex; gap: 8px; align-items: center; padding: 10px;
+      background: var(--paper); border-radius: 10px; margin-top: 12px;
+    }
+    #document-directory { flex: 1; min-width: 0; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; user-select: text; }
+    #document-result { margin-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; line-height: 1.6; }
+    .notice { padding: 11px 12px; border-radius: 10px; background: var(--mint-soft); color: #285c52; }
+    .notice.error { background: #fff0ed; color: #9e4038; }
+    .settings-list { margin: 0; padding-left: 19px; color: var(--muted); line-height: 1.85; user-select: text; }
+    .danger-zone { border-color: #e7c6c1; }
+    .danger-zone h2 { color: var(--danger); }
+    #app-root { margin: 10px 0; padding: 9px; background: var(--paper); border-radius: 8px; font-size: 10px; overflow-wrap: anywhere; user-select: text; }
+    #uninstall-phrase { margin: 10px 0; }
+    #uninstall-button { width: 100%; border-color: #d89188; background: #fff6f4; color: var(--danger); }
+    #uninstall-result { margin-top: 10px; overflow-wrap: anywhere; user-select: text; }
+    #busy-bar {
+      display: none; position: fixed; left: 0; right: 0; bottom: 0; padding: 7px;
+      background: var(--ink); color: #fff; text-align: center; font-size: 11px;
+    }
+    #busy-bar.visible { display: block; }
+    @media (max-height: 650px) {
+      header { padding-top: 13px; }
+      nav { margin-top: 11px; }
+      main { padding-top: 12px; }
+      .card { padding: 13px; margin-bottom: 10px; }
+      #timer { font-size: 44px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="cat-mark">🐱</div>
+      <div><h1>喵伴 Spider</h1><div class="subtitle">WORK BUDDY · 一起专注，也要一起休息</div></div>
+    </div>
+    <nav aria-label="工作伙伴功能">
+      <button class="active" data-tab="focus">专注与待办</button>
+      <button data-tab="document">AI 文档</button>
+      <button data-tab="settings">数据与移除</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="panel-focus" class="panel active">
+      <div class="card timer-card">
+        <div id="session-label">准备好开始了吗？</div>
+        <div id="timer">25:00</div>
+        <div id="linked-task">选择一项待办，给这段时间一个目标</div>
+        <div class="setup-row">
+          <label class="field">专注时长
+            <select id="focus-minutes">
+              <option value="15">15 分钟</option><option value="25" selected>25 分钟</option>
+              <option value="45">45 分钟</option><option value="60">60 分钟</option>
+              <option value="90">90 分钟</option>
+            </select>
+          </label>
+          <label class="field">关联待办
+            <select id="focus-todo"><option value="">不关联待办</option></select>
+          </label>
+        </div>
+        <div class="timer-actions">
+          <button id="start-focus" class="btn orange">开始专注</button>
+          <button id="pause-focus" class="btn mint" hidden>暂停</button>
+          <button id="resume-focus" class="btn mint" hidden>继续</button>
+          <button id="stop-session" class="btn ghost" hidden>结束</button>
+          <button id="start-break" class="btn ghost">休息 5 分钟</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title"><h2>今日总结</h2><span class="hint">本地统计，不消耗 token</span></div>
+        <div class="summary">
+          <div class="stat"><strong id="summary-minutes">0</strong><span>专注分钟</span></div>
+          <div class="stat"><strong id="summary-sessions">0</strong><span>完成轮次</span></div>
+          <div class="stat"><strong id="summary-tasks">0</strong><span>完成待办</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title"><h2>今日待办</h2><span id="todo-count" class="hint"></span></div>
+        <div class="todo-composer">
+          <input id="new-todo" maxlength="200" placeholder="添加一件具体的小事…" aria-label="新待办" />
+          <button id="add-todo" class="btn primary small">添加</button>
+        </div>
+        <div id="todo-list"><div class="empty">还没有待办，先写下一件小事吧</div></div>
+      </div>
+    </section>
+
+    <section id="panel-document" class="panel">
+      <div class="card">
+        <div class="doc-heading"><h2>让 Spider 自创一份办公文档</h2><div class="hint">描述主题、读者、用途、篇幅和希望包含的要点。Agent 会撰写正文并实际保存文件。</div></div>
+        <textarea id="document-topic" maxlength="4000" placeholder="例如：写一份三人软件工程实践周项目复盘，包含分工、遇到的困难、解决办法和下一步计划，约 1200 字。"></textarea>
+        <div class="doc-options">
+          <label class="field">首选格式
+            <select id="document-format"><option value="docx">可编辑 Word DOCX</option><option value="markdown">Markdown</option></select>
+          </label>
+          <button id="create-document" class="btn orange">撰写并创建文档</button>
+        </div>
+        <div class="directory">
+          <div id="document-directory">正在读取保存目录…</div>
+          <button id="choose-directory" class="btn small">更改</button>
+          <button id="open-directory" class="btn small">打开</button>
+        </div>
+        <div id="document-result" class="hint">DOCX 创建失败时会明确降级为 Markdown，不会假装 Word 已成功。真实写作需先配置 Agent API Key。</div>
+      </div>
+      <div class="card">
+        <div class="section-title"><h2>文件安全边界</h2></div>
+        <div class="hint">模型只能提交标题和结构化正文，不能指定任意路径、命令或模板。文件采用唯一名称，不覆盖已有文档，不创建宏文档。</div>
+      </div>
+    </section>
+
+    <section id="panel-settings" class="panel">
+      <div class="card">
+        <div class="section-title"><h2>你的数据由你保管</h2></div>
+        <div class="hint">专注记录、待办、状态和日记保存在本机。移除前的备份只包含白名单数据与合法日期日记，不包含 API Key。</div>
+      </div>
+      <div class="card danger-zone">
+        <div class="section-title"><h2>从电脑上移除这个伙伴</h2></div>
+        <ul class="settings-list">
+          <li>先由你选择备份位置并备份数据。</li>
+          <li>原生最终确认后，整个 spider-main 文件夹移入 Windows 回收站。</li>
+          <li>文件夹内源码、配置及你后来放入的所有文件都会一起移动。</li>
+          <li>不删除文件夹之外的任何内容，可从回收站恢复。</li>
+        </ul>
+        <div id="app-root">正在核对应用目录…</div>
+        <label class="field">输入确认短语“删除喵伴”
+          <input id="uninstall-phrase" autocomplete="off" placeholder="删除喵伴" />
+        </label>
+        <button id="uninstall-button" class="btn">备份并进入原生最终确认…</button>
+        <div id="uninstall-result" class="hint"></div>
+      </div>
+    </section>
+  </main>
+  <div id="busy-bar">Spider 正在处理，请稍候…</div>
+  <script src="buddy.js"></script>
+</body>
+</html>

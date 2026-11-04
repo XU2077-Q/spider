@@ -13,10 +13,11 @@
       padding: 10px 16px; background: #2c2c3e; color: #fff;
       font-size: 15px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;
     }
-    #diary-btn {
+    #diary-btn, #buddy-btn {
       border: none; background: #ffd23f; color: #2c2c3e; border-radius: 12px;
       padding: 4px 12px; font-size: 13px; font-weight: bold; cursor: pointer;
     }
+    #buddy-btn { background: #70d6c1; margin-right: 6px; }
     #vitals-bar {
       display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
       padding: 8px 14px; background: #fff; border-bottom: 1px solid #eee; font-size: 13px;
@@ -51,7 +52,7 @@
   </style>
 </head>
 <body>
-  <div id="header"><span>🐱 Spider</span><button id="diary-btn">📖 日记</button></div>
+  <div id="header"><span>🐱 喵伴 Spider</span><span><button id="buddy-btn">⏱ 工作伙伴</button><button id="diary-btn">📖 日记</button></span></div>
   <div id="vitals-bar">
     <span id="vitals-text">读取中…</span>
     <span id="vitals-btns">
@@ -132,6 +133,7 @@
     sendBtn.addEventListener('click', send);
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') send(); });
     document.getElementById('diary-btn').addEventListener('click', function () { window.spider.openDiary(); });
+    document.getElementById('buddy-btn').addEventListener('click', function () { window.spider.openBuddy(); });
     document.querySelectorAll('#vitals-btns button').forEach(function (btn) {
       btn.addEventListener('click', function () { doAction(btn.dataset.act); });
     });
@@ -142,7 +144,7 @@
       });
     });
 
-    addMsg('assistant', '喵～我是 Spider！可以帮你设提醒、记待办、查天气、打开网页。上面还能喂我、摸我、跟我玩哦～');
+    addMsg('assistant', '喵～我是喵伴 Spider！可以帮你设提醒、记待办、查天气、创作 Word 文档。点上方“工作伙伴”还能一起专注、休息和总结今天哦～');
     refreshVitals();
   </script>
 </body>

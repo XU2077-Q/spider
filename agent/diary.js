@@ -17,6 +17,11 @@ function yesterdayStr() {
   d.setDate(d.getDate() - 1);
   return dateStr(d);
 }
+function validDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + 'T00:00:00Z');
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
 
 // 次日打开时补写昨天的日记（如果还没写）
 async function ensureYesterdayDiary() {
@@ -47,15 +52,19 @@ async function ensureYesterdayDiary() {
 function list() {
   if (!fs.existsSync(diaryDir)) return [];
   return fs.readdirSync(diaryDir)
-    .filter((f) => f.endsWith('.md'))
+    .filter((f) => validDate(f.slice(0, -3)) && f.endsWith('.md'))
     .map((f) => f.replace('.md', ''))
     .sort()
     .reverse();
 }
 
 function read(date) {
-  try { return fs.readFileSync(path.join(diaryDir, date + '.md'), 'utf8'); }
-  catch { return null; }
+  if (!validDate(date)) return null;
+  const file = path.join(diaryDir, date + '.md');
+  try {
+    if (path.dirname(file) !== diaryDir || !fs.lstatSync(file).isFile()) return null;
+    return fs.readFileSync(file, 'utf8');
+  } catch { return null; }
 }
 
-module.exports = { ensureYesterdayDiary, list, read };
+module.exports = { ensureYesterdayDiary, list, read, validDate };

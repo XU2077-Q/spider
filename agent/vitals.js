@@ -69,6 +69,22 @@ function wake() { const v = tick(); v.sleeping = false; v.sleepReason = null; v.
 // 心智消耗：按 token 吞吐扣精力
 function drainTokens(tokens) { const v = tick(); v.energy = clamp(v.energy - tokens * CFG.energyPerToken, 0, 100); save(v); return v; }
 
+// Work Buddy：短休息不代替睡眠，完成一轮专注只增加少量负担与成就感。
+function completeFocus(minutes) {
+  const v = tick();
+  const duration = clamp(Number(minutes) || 25, 1, 240);
+  v.energy = clamp(v.energy - duration / 25, 0, 100);
+  v.mood = clamp(v.mood + 2, 0, 100);
+  save(v);
+  return v;
+}
+function completeBreak() {
+  const v = tick();
+  v.mood = clamp(v.mood + 1, 0, 100);
+  save(v);
+  return v;
+}
+
 // —— 情绪 ——
 const EMOTIONS = { sleepy: '困', hungry: '饿', grumpy: '不开心', happy: '开心', tired: '累', neutral: '平静' };
 function getEmotion(v) {
@@ -95,4 +111,4 @@ function toPrompt(v) {
   return lines.join('\n');
 }
 
-module.exports = { tick, feed, pet, play, rest, wake, drainTokens, getEmotion, toPrompt, EMOTIONS, CFG };
+module.exports = { tick, feed, pet, play, rest, wake, drainTokens, completeFocus, completeBreak, getEmotion, toPrompt, EMOTIONS, CFG };

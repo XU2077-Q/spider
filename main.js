@@ -1,5 +1,6 @@
-const { app, BrowserWindow, screen, ipcMain, powerMonitor, Notification } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, powerMonitor, Notification, dialog, shell } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
 const agent = require('./agent/agent');
 const tools = require('./agent/tools');
 const vitals = require('./agent/vitals');
@@ -8,10 +9,14 @@ const triggers = require('./agent/triggers');
 const habits = require('./agent/habits');
 const perception = require('./agent/perception');
 const reflection = require('./agent/reflection');
+const workBuddy = require('./agent/work-buddy').createService();
+const documents = require('./agent/documents');
+const uninstaller = require('./agent/uninstall');
 
 let petWindow = null;
 let chatWindow = null;
 let diaryWindow = null;
+let buddyWindow = null;
 let dragOffset = null;
 let isDragging = false;
 let catHovered = false;
@@ -26,6 +31,10 @@ let oneShotTimer = null;
 let roam = null;
 let nextRoamTimer = null;
 let gazeTimer = null;
+let vitalsTimer = null;
+let triggerTimer = null;
+let workBuddyTimer = null;
+let uninstallInFlight = false;
 let lastInteractionAt = Date.now();
 const PET_WIDTH = 520;
 const PET_HEIGHT = 440;
@@ -118,11 +127,31 @@ function createChatWindow() {
   chatWindow.on('closed', () => { chatWindow = null; });
 }
 
+function createBuddyWindow() {
+  if (buddyWindow && !buddyWindow.isDestroyed()) { buddyWindow.focus(); return; }
+  buddyWindow = new BrowserWindow({
+    width: 480, height: 720, minWidth: 420, minHeight: 600,
+    title: '喵伴 Spider · 工作伙伴',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  buddyWindow.loadFile(path.join(__dirname, 'renderer', 'buddy.html'));
+  buddyWindow.on('closed', () => { buddyWindow = null; });
+}
+
+function focusActive() {
+  const state = workBuddy.getState();
+  return state.mode === 'focus' && state.status === 'running';
+}
+
 // —— 权威动画状态：拖动 > 单次互动 > 工作 > 睡眠 > 散步 > 情绪 ——
 function resolvePetAnimation() {
   if (isDragging) return 'struggle';
   if (oneShot) return oneShot.name;
-  if (workingCount > 0) return 'work';
+  if (workingCount > 0 || focusActive()) return 'work';
   if (currentVitals && currentVitals.sleeping) return 'sleep';
   if (roam) return roam.direction === 'left' ? 'walk-left' : 'walk-right';
   const emotion = currentVitals ? vitals.getEmotion(currentVitals) : 'neutral';
@@ -136,7 +165,7 @@ function syncPetAnimation(force = false) {
 function roamingAllowed() {
   return Boolean(
     petWindow && !petWindow.isDestroyed()
-    && !isDragging && workingCount === 0 && !oneShot
+    && !isDragging && workingCount === 0 && !focusActive() && !oneShot
     && currentVitals && !currentVitals.sleeping
   );
 }
@@ -244,7 +273,7 @@ function noteInteraction() {
 }
 
 function restAfterInactivity() {
-  if (!currentVitals || currentVitals.sleeping || isDragging || workingCount > 0 || oneShot) return;
+  if (!currentVitals || currentVitals.sleeping || isDragging || workingCount > 0 || focusActive() || oneShot) return;
   if (Date.now() - lastInteractionAt < INACTIVITY_SLEEP_MS) return;
   updateVitals(vitals.rest());
 }
@@ -333,6 +362,148 @@ function createDiaryWindow() {
   diaryWindow.on('closed', () => { diaryWindow = null; });
 }
 
+// —— Work Buddy：主进程计时，界面只显示权威状态 ——
+function requireWindow(event, expected) {
+  if (!expected || expected.isDestroyed() || BrowserWindow.fromWebContents(event.sender) !== expected) {
+    throw new Error('请求来自未授权的窗口');
+  }
+}
+function buddyView() {
+  const today = new Date().toDateString();
+  const todos = tools.listTodos();
+  return {
+    state: workBuddy.getState(),
+    summary: {
+      ...workBuddy.getSummary(),
+      completedTasks: todos.filter((todo) => todo.done && todo.completedAt && new Date(todo.completedAt).toDateString() === today).length,
+    },
+    todos,
+    documentDirectory: documents.getOutputRoot(),
+  };
+}
+function publishBuddy() {
+  if (buddyWindow && !buddyWindow.isDestroyed()) buddyWindow.webContents.send('buddy-state', buddyView());
+}
+function acceptWorkResult(result) {
+  for (const event of result.events || []) {
+    if (event.type !== 'sessionCompleted') continue;
+    const focus = event.session.mode === 'focus';
+    updateVitals(focus ? vitals.completeFocus(event.session.durationMin) : vitals.completeBreak(), null);
+    const text = focus
+      ? `完成 ${event.session.durationMin} 分钟专注！休息一下吧，喵～`
+      : '休息结束啦，准备好再开始下一轮了吗？';
+    petSpeak(text);
+    playOneShot(focus ? 'happy' : 'stretch');
+    if (Notification.isSupported()) new Notification({ title: '喵伴 Work Buddy', body: text }).show();
+  }
+  reconcilePet();
+  publishBuddy();
+  return buddyView();
+}
+function tickWorkBuddy() {
+  try { acceptWorkResult(workBuddy.tick()); } catch (error) { console.error('[work-buddy]', error.message); }
+}
+function quiesce() {
+  clearInterval(vitalsTimer);
+  clearInterval(triggerTimer);
+  clearInterval(workBuddyTimer);
+  clearInterval(gazeTimer);
+  vitalsTimer = triggerTimer = workBuddyTimer = gazeTimer = null;
+  stopRoam();
+  clearScheduledRoam();
+  if (typeof tools.stopReminders === 'function') tools.stopReminders();
+}
+
+function buddyHandler(channel, handler) {
+  ipcMain.handle(channel, async (event, payload) => {
+    requireWindow(event, buddyWindow);
+    noteInteraction();
+    return handler(payload, event);
+  });
+}
+buddyHandler('buddy-get', () => buddyView());
+buddyHandler('buddy-start-focus', ({ minutes, todoId } = {}) => {
+  const v = vitals.tick();
+  updateVitals(v, null);
+  if (v.sleeping || v.energy < 15) throw new Error('Spider 现在太累了，请先叫醒并让它休息恢复');
+  return acceptWorkResult(workBuddy.startFocus({ durationMin: minutes === undefined ? 25 : minutes, todoId }));
+});
+buddyHandler('buddy-pause', () => acceptWorkResult(workBuddy.pause()));
+buddyHandler('buddy-resume', () => acceptWorkResult(workBuddy.resume()));
+buddyHandler('buddy-stop', () => acceptWorkResult(workBuddy.stop()));
+buddyHandler('buddy-start-break', ({ minutes } = {}) => acceptWorkResult(workBuddy.startBreak({ durationMin: minutes || 5 })));
+buddyHandler('buddy-add-todo', ({ text } = {}) => { tools.addTodo(text); publishBuddy(); return buddyView(); });
+buddyHandler('buddy-toggle-todo', ({ id } = {}) => {
+  if (!tools.completeTodo(id)) throw new Error('没有找到这条待办');
+  publishBuddy();
+  return buddyView();
+});
+buddyHandler('buddy-delete-todo', ({ id } = {}) => { tools.deleteTodo(id); publishBuddy(); return buddyView(); });
+buddyHandler('buddy-create-document', async ({ topic, format } = {}) => {
+  const clean = String(topic || '').trim();
+  if (clean.length < 4 || clean.length > 4000) throw new Error('文档主题与要求需为 4–4000 个字符');
+  const requestedFormat = format === 'markdown' ? 'Markdown' : 'Word DOCX';
+  workingCount += 1;
+  reconcilePet();
+  try {
+    const reply = await agent.runAgent(`请根据以下要求创作一份完整、结构清晰的中文办公文档，并调用 create_document 实际创建${requestedFormat}文件。不要只说已经写好，必须根据工具结果报告真实格式和路径。\n\n${clean}`, []);
+    return { ok: true, reply };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  } finally {
+    workingCount = Math.max(0, workingCount - 1);
+    reconcilePet();
+  }
+});
+buddyHandler('document-choose-directory', async () => {
+  const result = await dialog.showOpenDialog(buddyWindow, {
+    title: '选择 Spider 文档保存目录',
+    defaultPath: documents.getOutputRoot(),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths[0]) return { canceled: true };
+  return { canceled: false, directory: documents.setOutputRoot(result.filePaths[0]) };
+});
+buddyHandler('document-open-directory', async () => {
+  const directory = documents.getOutputRoot();
+  require('fs').mkdirSync(directory, { recursive: true });
+  const error = await shell.openPath(directory);
+  if (error) throw new Error(error);
+  return true;
+});
+buddyHandler('uninstall-info', () => ({
+  root: uninstaller.validateAppRoot(app.getAppPath(), [app.getPath('home'), app.getPath('desktop'), app.getPath('documents'), app.getPath('downloads')]),
+  confirmPhrase: uninstaller.CONFIRM_PHRASE,
+  backupParent: app.getPath('documents'),
+}));
+buddyHandler('uninstall-request', async ({ phrase } = {}) => {
+  if (uninstallInFlight) throw new Error('卸载流程已经开始');
+  if (phrase !== uninstaller.CONFIRM_PHRASE) throw new Error(`请输入完整确认短语：${uninstaller.CONFIRM_PHRASE}`);
+  uninstallInFlight = true;
+  try {
+    const root = uninstaller.validateAppRoot(app.getAppPath(), [app.getPath('home'), app.getPath('desktop'), app.getPath('documents'), app.getPath('downloads')]);
+    const destination = await dialog.showOpenDialog(buddyWindow, {
+      title: '选择日记与记忆的备份位置（不包含 API Key）',
+      defaultPath: app.getPath('documents'), properties: ['openDirectory', 'createDirectory'],
+    });
+    if (destination.canceled || !destination.filePaths[0]) return { ok: false, canceled: true };
+    const backup = uninstaller.exportUserData({ appRoot: root, destinationParent: destination.filePaths[0] });
+    const confirmation = await dialog.showMessageBox(buddyWindow, {
+      type: 'warning', buttons: ['取消', '移入回收站'], defaultId: 0, cancelId: 0, noLink: true,
+      title: '最终确认：移除整个 Spider 文件夹',
+      message: '整个 spider-main 文件夹将被移入回收站',
+      detail: `文件夹内的源码、配置以及你后来放入的所有文件都会一起移动。\n\n目标：${root}\n备份：${backup.backupPath}\n\n不会删除此文件夹之外的任何内容。可从回收站恢复。`,
+    });
+    if (confirmation.response !== 1) return { ok: false, canceled: true, backupPath: backup.backupPath };
+    uninstaller.spawnRecycler({ appRoot: root, spawn });
+    quiesce();
+    setImmediate(() => app.quit());
+    return { ok: true, backupPath: backup.backupPath };
+  } finally {
+    uninstallInFlight = false;
+  }
+});
+
 // —— 拖拽（宠物窗）：立即取消自主行为，所有退出路径统一清理 ——
 ipcMain.on('pet-hit-test', (e, hovered) => {
   if (BrowserWindow.fromWebContents(e.sender) !== petWindow || typeof hovered !== 'boolean') return;
@@ -371,13 +542,28 @@ ipcMain.on('drag-end', (e) => {
   if (BrowserWindow.fromWebContents(e.sender) === petWindow) finishDrag();
 });
 
-// —— 打开聊天 ——
+// —— 打开聊天与工作伙伴 ——
 ipcMain.on('open-chat', () => { noteInteraction(); createChatWindow(); });
+ipcMain.on('open-buddy', (event) => {
+  const sender = BrowserWindow.fromWebContents(event.sender);
+  if (sender !== petWindow && sender !== chatWindow) return;
+  noteInteraction();
+  createBuddyWindow();
+});
 
 // —— 日记 ——
-ipcMain.on('open-diary', () => createDiaryWindow());
-ipcMain.handle('diary-list', () => diary.list());
-ipcMain.handle('diary-read', (e, date) => diary.read(date));
+ipcMain.on('open-diary', (event) => {
+  if (BrowserWindow.fromWebContents(event.sender) !== chatWindow) return;
+  createDiaryWindow();
+});
+ipcMain.handle('diary-list', (event) => {
+  requireWindow(event, diaryWindow);
+  return diary.list();
+});
+ipcMain.handle('diary-read', (event, date) => {
+  requireWindow(event, diaryWindow);
+  return diary.read(date);
+});
 
 // —— 聊天 ——
 ipcMain.handle('agent-chat', async (e, { msg, history }) => {
@@ -448,24 +634,27 @@ ipcMain.handle('debug-fire', async (e, type) => {
 });
 
 app.whenReady().then(() => {
+  documents.setOutputRoot(path.join(app.getPath('documents'), 'SpiderDocuments'));
   tools.restoreReminders();
   currentVitals = vitals.rest();
   createPetWindow();
   reconcilePet();
   startGazeTracking();
   // vitals.tick() 会写文件；低频刷新，不与高频目光更新混用。
-  setInterval(() => {
+  vitalsTimer = setInterval(() => {
     try {
       updateVitals(vitals.tick());
       restAfterInactivity();
     } catch (e) { console.error('[vitals]', e && e.message); }
   }, 1500);
+  tickWorkBuddy();
+  workBuddyTimer = setInterval(tickWorkBuddy, 1000);
   diary.ensureYesterdayDiary().then((r) => console.log('[diary]', r));
   reflection.ensureYesterdayReflection().then((r) => console.log('[reflection]', r));
 
   // 主动触发：启动问候 + 周期检查
   triggers.greet().then(petSpeak).catch((e) => console.error('[greet]', e && e.message));
-  setInterval(() => {
+  triggerTimer = setInterval(() => {
     try {
       const idleSec = powerMonitor.getSystemIdleTime();
       perception.update(idleSec);           // 情绪感知：忙/空闲/离开
@@ -490,3 +679,4 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+app.on('before-quit', quiesce);
